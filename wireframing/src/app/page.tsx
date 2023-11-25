@@ -1,71 +1,210 @@
 'use client';
+import React, { useCallback, useMemo, useRef } from 'react';
+import ReactFlow, {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  BackgroundVariant,
+  Connection,
+  Controls,
+  Edge,
+  Node,
+  NodeProps,
+  NodeChange,
+  EdgeChange,
+  useEdgesState,
+  useNodesState,
+} from 'reactflow';
 
-import Head from 'next/head';
-import * as React from 'react';
+import 'reactflow/dist/style.css';
 
-import ArrowLink from '@/components/links/ArrowLink';
-import ButtonLink from '@/components/links/ButtonLink';
-import UnderlineLink from '@/components/links/UnderlineLink';
-import UnstyledLink from '@/components/links/UnstyledLink';
+import CustomEdge from '@/app/components/wireframe/CustomEdge';
+import CustomNodeComponent from '@/app/components/wireframe/CustomNodeComponent';
+import Sidebar from '@/app/components/wireframe/Sidebar';
+import TextUpdaterNode from '@/app/components/wireframe/TextUpdaterNode';
+import { UpdateNodeDataContext } from '@/app/components/wireframe/UpdateNodeDataContext';
+import { toast } from 'react-toastify';
 
-/**
- * SVGR Support
- * Caveat: No React Props Type.
- *
- * You can override the next-env if the type is important to you
- * @see https://stackoverflow.com/questions/68103844/how-to-override-next-js-svg-module-declaration
- */
-import Logo from '~/svg/Logo.svg';
 
-// !STARTERCONF -> Select !STARTERCONF and CMD + SHIFT + F
-// Before you begin editing, follow all comments with `STARTERCONF`,
-// to customize the default configuration.
+// interface NodeData {
+//   label: string;
+// }
 
-export default function HomePage() {
+interface ExtendedNodeProps extends NodeProps {
+  updateNodeData?: (nodeId: string, newLabel: string) => void;
+  nodeId?: string; // Optionally include nodeId if it's not always present
+}
+
+let nodeIdCounter = 0;
+const generateNodeId = () => `node-${nodeIdCounter++}`;
+
+const initialNodes: Node[] = [
+  {
+    id: '1',
+    type: 'customNode', // This type should match the type you register below
+    position: { x: 0, y: 0 },
+    data: {
+      label: 'Home',
+      children: [
+        { id: generateNodeId(), label: 'Navbar' },
+        { id: generateNodeId(), label: 'Hero Header Section' },
+        { id: generateNodeId(), label: 'Hero Header Section 2' },
+        // ... more children
+      ],
+    },
+  },
+  // ... other parent nodes
+];
+
+const initialEdges: Edge[] = [
+  // Define your initial edges here, and for each edge include the style property:
+  {
+    id: 'e1-2',
+    source: '1',
+    target: '2',
+    style: { strokeWidth: 4 }, // Adjust the stroke width as needed
+    // ... other edge properties
+  },
+  // ... other edges
+];
+
+export default function App() {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  const edgeTypes = useMemo(() => ({ customEdge: CustomEdge }), []);
+
+  const reactFlowWrapper = useRef(null);
+
+  const onConnect = useCallback(
+    (params: Connection | Edge) => {
+      setEdges((eds) => addEdge({ ...params, type: 'smoothstep' }, eds));
+    },
+    [setEdges]
+  );
+
+  const updateNodeData = useCallback(
+    (nodeId: string, newLabel: string) => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id === nodeId) {
+            // Cast the node to any to update its data since NodeProps does not directly support 'data' property updates
+            return { ...node, data: { ...node.data, label: newLabel } } as any;
+          }
+          return node;
+        })
+      );
+    },
+    [setNodes]
+  );
+
+  const addNewNode = useCallback(() => {
+    const newNode = {
+      id: generateNodeId(),
+      type: 'customNode', // Use your custom node type here
+      position: {
+        x: (Math.random() * window.innerWidth) / 2,
+        y: (Math.random() * window.innerHeight) / 2,
+      },
+      data: { label: `Page ${nodes.length}`, children: [] },
+    };
+    setNodes((nds) => nds.concat(newNode));
+  }, [nodes, setNodes]);
+
+  // Define the nodeTypes using NodeProps
+  const nodeTypes = useMemo<
+    Record<string, React.ComponentType<ExtendedNodeProps>>
+  >(
+    () => ({
+      customNode: CustomNodeComponent,
+      textUpdater: TextUpdaterNode,
+    }),
+    []
+  );
+
+  // Save function uses the latest state
+  const saveSitemapToFirebase = async () => {
+    const sitemapId = 'your_sitemap_id';
+
+    try {
+      toast.success('Sitemap saved/updated in Firestore successfully');
+      console.log('Current nodes:', nodes);
+      console.log('Current edges:', edges);
+    } catch (error) {
+      const typedError = error as Error;
+      toast.error(
+        `Error saving/updating sitemap in Firestore: ${typedError.message}`
+      );
+    }
+  };
+
+  // Make sure these are being triggered upon node changes
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) =>
+      setNodes((nds) => applyNodeChanges(changes, nds)),
+    [setNodes]
+  );
+
+  // Make sure these are being triggered upon edge changes
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) =>
+      setEdges((eds) => applyEdgeChanges(changes, eds)),
+    [setEdges]
+  );
+
+  const updateNodeChildren = useCallback(
+    (nodeId: string, newChildren: ChildNodeProps[]) => {
+      setNodes((prevNodes) =>
+        prevNodes.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, children: newChildren } }
+            : node
+        )
+      );
+    },
+    [setNodes]
+  );
+
   return (
-    <main>
-      <Head>
-        <title>Hi</title>
-      </Head>
-      <section className='bg-white'>
-        <div className='layout relative flex min-h-screen flex-col items-center justify-center py-12 text-center'>
-          <Logo className='w-16' />
-          <h1 className='mt-4'>Next.js + Tailwind CSS + TypeScript Starter</h1>
-          <p className='mt-2 text-sm text-gray-800'>
-            A starter for Next.js, Tailwind CSS, and TypeScript with Absolute
-            Import, Seo, Link component, pre-configured with Husky{' '}
-          </p>
-          <p className='mt-2 text-sm text-gray-700'>
-            <ArrowLink href='https://github.com/theodorusclarence/ts-nextjs-tailwind-starter'>
-              See the repository
-            </ArrowLink>
-          </p>
+    <UpdateNodeDataContext.Provider
+      value={{ updateNodeData, updateNodeChildren }}
+    >
+      <div className='save-button-container'>
+        <button onClick={saveSitemapToFirebase} className='save-button'>
+          Save Sitemap
+        </button>
+      </div>
+      <div
+        ref={reactFlowWrapper}
+        className='reactflow-wrapper relative h-screen'
+      >
+        <ReactFlow
+          nodes={nodes as Node[]} // Cast nodes to any to satisfy the nodes prop requirement
+          edges={edges}
+          edgeTypes={edgeTypes}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onConnect={onConnect}
+          nodeTypes={{
+            customNode: (nodeProps: ExtendedNodeProps) => (
+              <CustomNodeComponent {...nodeProps} nodeId={nodeProps.id} />
+            ),
+          }}
+        >
+          <Controls />
+          <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+          <div className='absolute right-0 top-1/2 z-10 -translate-y-1/2 transform'>
+            <Sidebar onAddNode={addNewNode} />
+          </div>
+        </ReactFlow>
+      </div>
 
-          <ButtonLink className='mt-6' href='/components' variant='light'>
-            See all components
-          </ButtonLink>
-
-          <UnstyledLink
-            href='https://vercel.com/new/git/external?repository-url=https%3A%2F%2Fgithub.com%2Ftheodorusclarence%2Fts-nextjs-tailwind-starter'
-            className='mt-4'
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              width='92'
-              height='32'
-              src='https://vercel.com/button'
-              alt='Deploy with Vercel'
-            />
-          </UnstyledLink>
-
-          <footer className='absolute bottom-2 text-gray-700'>
-            © {new Date().getFullYear()} By{' '}
-            <UnderlineLink href='https://theodorusclarence.com?ref=tsnextstarter'>
-              Theodorus Clarence
-            </UnderlineLink>
-          </footer>
-        </div>
-      </section>
-    </main>
+      {/* Sidebar Container */}
+      <div className='w-20 md:w-40 lg:w-64'>
+        {/* Sidebar contents */}
+        <Sidebar onAddNode={addNewNode} />
+      </div>
+    </UpdateNodeDataContext.Provider>
   );
 }
